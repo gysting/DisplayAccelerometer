@@ -34,7 +34,21 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     float accelationSquareRoot = 0, magSquareRoot = 0, gyroSquareRoot = 0;
     float accelSquareRoot2 = 0;
     /* accelerometer */
-    float ax, ay, az;
+    /* Current Accelerometer */
+    float aX, aY, aZ;
+    /* Average value without noise */
+    float aXM = 0, aYM = 0, aZM = 0;
+    /* Integrated Avlue */
+    float aXI = 0, aYI = 0, aZI = 0;
+    int movDirection = 0;
+    float aXMPrev, aYMPrev, aZMPrev;
+    float totalAcc = 0;
+    long duration = 0;
+    float totalMax = 0;
+    float integratedMax = 0;
+
+
+
     /* magnetic field */
     float mx, my, mz;
     /* gyroscope */
@@ -42,6 +56,9 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     float accSum = 0;
     private long upDuration = 0, accCount= 0;
     private long durationMax = 0;
+    private long takeOffCounter=0;
+    boolean isAcceleration = true;
+    boolean takeoffDetected = false;
 
 
 
@@ -124,25 +141,190 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     private void getAccelerometer(SensorEvent event) {
         boolean isMagnetometerCalibrated = false;
         boolean isGyroscopeCalibrated = false;
+        boolean currentAcceleration= false;
+        long currentTimeMs = 0;
+        String str;
 
+        currentTimeMs = System.currentTimeMillis();
 
         final TextView scrollTextView = (TextView) findViewById(R.id.scrollTextView);
 
         if (isAccellerometer && (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)) {
+            float x, y, z;
+            float x2, y2, z2;
             float[] values = event.values;
+            float accTotal, accTotalAbs;
+
+            float aZI2, aXI2, aYI2;
+
+
             // Movement
-            ax = values[0];
-            ay = values[1];
-            az = values[2];
+            x = values[0];
+            y = values[1];
+            z = values[2];
 
+            aXM = (float) (aXM * 0.8 + x * 0.2);
+            aYM = (float) (aYM * 0.8 + y * 0.2);
+            aZM = (float) (aZM * 0.8 + z * 0.2);
 
-            accelSquareRoot2 = (ax * ax + ay * ay + az * az) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH);
+            scrollTextView.setText("<Accelerometer>\n");
+            str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", aXM, aYM, aZM);
+            scrollTextView.setText(str);
 
+            x2 = x * x;
+            y2 = y * y;
+            z2 = z * z;
 
-            accelationSquareRoot = (float) (sqrt(ax * ax + ay * ay + az * az) - SensorManager.GRAVITY_EARTH);
+            // accTotal = (float)(sqrt(x2 + y2 + z2) - SensorManager.GRAVITY_EARTH);
+            accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
+            accTotalAbs = (float) (sqrt(accTotal * accTotal));
+
+            //accelSquareRoot2 = (ax * ax + ay * ay + az * az) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH);
+            //accelationSquareRoot = (float) (sqrt(ax * ax + ay * ay + az * az) - SensorManager.GRAVITY_EARTH);
 
             long actualTime = event.timestamp;
 
+            if (accTotal > 0) {
+                currentAcceleration = true;
+            } else {
+                currentAcceleration = false;
+            }
+
+            if ((accTotalAbs > 0.1) && (currentAcceleration == isAcceleration))
+            {
+
+
+                if (lastUpdate == 0) {
+                    lastUpdate = System.currentTimeMillis();
+
+                    /* Started move, Let mark current level */
+                    aXMPrev = aXM;
+                    aYMPrev = aYM;
+                    aZMPrev = aZM;
+
+                    isAcceleration = currentAcceleration;
+                }
+
+                /* Add all the diff values */
+                aXI += (x - aXMPrev);
+                aYI += (y - aYMPrev);
+                aZI += (z - aZMPrev);
+
+
+                accSum += accTotalAbs;
+                accCount++;
+
+                totalAcc = (accSum / accCount) * duration;
+
+                if (totalAcc > integratedMax)
+                {
+                    integratedMax = totalAcc;
+                }
+
+                if (accTotalAbs > totalMax)
+                {
+                    totalMax = accTotalAbs;
+                }
+
+                duration = currentTimeMs - lastUpdate;
+
+                /* Get Moved duration */
+                    if (duration >= 1000) {
+                        //scrollTextView.append("1 sec!!!\n");
+
+                        if (takeoffDetected == false) {
+                            takeoffDetected = true;
+
+                        /* average value * time */
+
+                            takeOffCounter++;
+                        }
+                    }
+
+
+
+                if (duration > durationMax)
+                {
+                    durationMax = duration;
+                }
+
+            }
+            else
+            {
+
+                if (lastUpdate != 0) {
+
+
+
+                    /* Check moving direction */
+                    aXI2 = aXI * aXI;
+                    aYI2 = aYI * aYI;
+                    aZI2 = aZI * aZI;
+
+                    if (aXI2 > aYI2)
+                    {
+                        if (aXI2 > aZI2)
+                        {
+                        /* Moving X direction */
+                            movDirection = 0;
+                        }
+                        else
+                        {
+                        /* Moving Z */
+                            movDirection = 2;
+                        }
+
+                    }
+                    else
+                    {
+                        if (aYI2 > aZI2)
+                        {
+                        /* movint Y */
+                            movDirection = 1;
+                        }
+                        else
+                        {
+                        /* mvoing Z */
+                            movDirection = 2;
+                        }
+                    }
+
+                }
+
+                lastUpdate = 0;
+                accSum = 0;
+                accCount = 0;
+
+                aXI = 0;
+                aYI = 0;
+                aZI = 0;
+
+                aXMPrev = 0;
+                aYMPrev = 0;
+                aZMPrev = 0;
+
+                takeoffDetected = false;
+                isAcceleration = currentAcceleration;
+            }
+
+
+            str = String.format("Total: %.4f, %.4f, %.4f\n", accTotal, accTotalAbs, totalMax);
+            scrollTextView.append(str);
+
+
+            str = String.format("Moving To: %d\n", movDirection);
+            scrollTextView.append(str);
+
+
+            str = String.format("Total Max: %.4f, %.4f\n", totalAcc, integratedMax);
+            scrollTextView.append(str);
+
+
+            str = String.format("Dur: %d , %d ms\n", duration, durationMax);
+            scrollTextView.append(str);
+
+            str = String.format("TakeOff: %d\n", takeOffCounter);
+            scrollTextView.append(str);
         }
         if (isMagnetosensor && (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD))
         {
@@ -173,55 +355,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             isGyroscopeCalibrated = false;
         }
 
-        String str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", ax, ay, az);
+        //String str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", ax, ay, az);
 
-        if (accelationSquareRoot > 0.1)
-        {
-            scrollTextView.setText("<Accelerometer>\n");
-            scrollTextView.append(str);
-            str = String.format("SQRT: %04f, %04f\n", accelationSquareRoot, accelSquareRoot2);
-            scrollTextView.append(str);
-            if (lastUpdate == 0) {
-                lastUpdate = System.currentTimeMillis();
-            }
-            accSum += accelationSquareRoot;
-            accCount++;
-        }
-        else
-        {
-            if (lastUpdate != 0) {
-                long currentTimeMs = System.currentTimeMillis();
-                long duration;
-
-                duration = currentTimeMs -lastUpdate;
-
-                if (duration >= 1000)
-                {
-                    scrollTextView.append("1 sec!!!\n");
-                    /* average value * time */
-                    float totalAcc = (accSum / accCount) * duration;
-
-                    str = String.format("TOTAL: %.04f\n", totalAcc / 1000);
-                    scrollTextView.append(str);
-                }
-                else
-                {
-                    if (duration > durationMax)
-                    {
-                        durationMax = duration;
-                    }
-                    str = String.format("Dur: %d , %d ms\n", duration, durationMax);
-                    scrollTextView.append(str);
-                }
-
-                lastUpdate = 0;
-                accSum = 0;
-                accCount = 0;
-
-
-            }
-
-        }
 
         /*
         scrollTextView.append("<Magnetic  Sensor>\n");

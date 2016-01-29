@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:layout_margin="@dimen/text_margin"
         android:text="@string/large_text"
-        android:textSize="18sp"
+        android:textSize="22sp"
         android:id="@+id/scrollTextView" />
 
 </android.support.v4.widget.NestedScrollView>
