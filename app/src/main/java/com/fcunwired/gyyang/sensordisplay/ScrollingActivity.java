@@ -229,7 +229,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 duration = currentTimeMs - lastUpdate;
 
                 /* Get Moved duration */
-                    if (duration >= 1000) {
+                    if (duration >= 2000) {
                         //scrollTextView.append("1 sec!!!\n");
 
                         if (takeoffDetected == false) {
