@@ -11,13 +11,17 @@ import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.TextWatcher;
 import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import org.w3c.dom.Text;
 
 import static java.lang.Math.sqrt;
 
@@ -60,18 +64,23 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     private long takeOffCounter=0;
     boolean isAcceleration = true;
     boolean takeoffDetected = false;
-
-
+    float checkDuration=2000;
+    double checkAcc=0.1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_scrolling);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
+        final TextView checkTextView = (TextView)findViewById(R.id.checkTextView);
+        checkTextView.setText("current: " + checkDuration + "," + checkAcc);
+        final EditText durationTextBox = (EditText)findViewById(R.id.durationTextBox);
+        final EditText accTextBox = (EditText)findViewById(R.id.accTextBox);
 
 
-        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
+
+        final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -112,6 +121,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
         lastUpdate = 0;
 
+        final Button checkButton = (Button)findViewById(R.id.CheckButton);
         Button button = (Button)findViewById(R.id.button);
 
         button.setOnClickListener(
@@ -137,6 +147,21 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                         accelationSquareRoot = 0;
                         magSquareRoot = 0;
                         gyroSquareRoot = 0;
+                    }
+                }
+        );
+
+        checkButton.setOnClickListener(
+                new Button.OnClickListener() {
+                    public void onClick(View v) {
+                        if ((accTextBox.getText().length() != 0) && (durationTextBox.getText().length() != 0))
+                        {
+                            checkAcc = Double.valueOf(accTextBox.getText().toString());
+                            checkDuration = Float.valueOf(durationTextBox.getText().toString());
+                            durationTextBox.setText("");
+                            accTextBox.setText("");
+                        }
+                        checkTextView.setText("current: " + checkDuration + " , " + checkAcc);
                     }
                 }
         );
@@ -220,7 +245,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 currentAcceleration = false;
             }
 
-            if ((accTotalAbs > 0.1) && (currentAcceleration == isAcceleration))
+            if ((accTotalAbs > checkAcc) && (currentAcceleration == isAcceleration))
             {
 
 
@@ -259,7 +284,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 duration = currentTimeMs - lastUpdate;
 
                 /* Get Moved duration */
-                    if (duration >= 2000) {
+                    if (duration >= checkDuration) {
                         //scrollTextView.append("1 sec!!!\n");
 
                         if (takeoffDetected == false) {
