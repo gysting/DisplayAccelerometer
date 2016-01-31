@@ -15,6 +15,7 @@ import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -110,6 +111,35 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
 
         lastUpdate = 0;
+
+        Button button = (Button)findViewById(R.id.button);
+
+        button.setOnClickListener(
+                new Button.OnClickListener() {
+                    public void onClick(View v) {
+                        totalAcc=0;
+                        totalMax=0;
+                        aYM = 0;
+                        aZM = 0;
+                        aXM = 0;
+                        aXI = 0;
+                        aYI = 0;
+                        aZI = 0;
+                        movDirection = 0;
+                        duration = 0;
+                        integratedMax = 0;
+                        accSum = 0;
+                        upDuration = 0;
+                        accCount= 0;
+                        durationMax = 0;
+                        takeOffCounter=0;
+                        accelSquareRoot2 = 0;
+                        accelationSquareRoot = 0;
+                        magSquareRoot = 0;
+                        gyroSquareRoot = 0;
+                    }
+                }
+        );
     }
 
     @Override
