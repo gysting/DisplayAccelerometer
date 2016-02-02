@@ -62,6 +62,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     boolean takeoffDetected = false;
     float checkDuration=2000;
     double checkAcc=0.1;
+    float compansation  = 0;
 
 
 
@@ -172,6 +173,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                             checkDuration = Float.valueOf(durationTextBox.getText().toString());
                             durationTextBox.setText("");
                             accTextBox.setText("");
+
                         }
                         checkTextView.setText("current: " + checkDuration + ",   " + checkAcc);
                     }
@@ -221,7 +223,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             float x2, y2, z2;
             float[] values = event.values;
             float accTotal, accTotalAbs;
-
             float aZI2, aXI2, aYI2;
 
 
@@ -242,26 +243,14 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             y2 = aYM * aYM;
             z2 = aZM * aZM;
 
-            if (z < 0) {
-                accTotal = (float) (sqrt(x2 + y2 + z2) - (SensorManager.GRAVITY_EARTH));
-                //accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
-            }
-            else {
-                accTotal = (float) (sqrt(x2 + y2 + z2) - (SensorManager.GRAVITY_EARTH));
-                //accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
-            }
-
+            accTotal = (float) (sqrt(x2 + y2 + z2) - SensorManager.GRAVITY_EARTH  + compansation);
+            //accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
 
             accTotalAbs = (float) (sqrt(accTotal * accTotal));
 
 
             GraphView graph = (GraphView) findViewById(R.id.graph);
 
-            if (series.getLowestValueX() == 0) {
-                //series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, 100);
-                series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, 100);
-            }
-            else
             {
                 series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, 100);
                 //series.appendData(new DataPoint((currentTimeMs - startTimeMs), aXM), true, 100);
@@ -280,6 +269,11 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             {
                 if (lastUpdate == 0) {
                     lastUpdate = System.currentTimeMillis();
+                    duration = 0;
+                }
+                else
+                {
+                    duration = currentTimeMs - lastUpdate;
                 }
 
                 /* Add all the diff v */
@@ -298,7 +292,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     totalMax = accTotalAbs;
                 }
 
-                duration = currentTimeMs - lastUpdate;
+
 
                 /* Get Moved duration */
                     if (duration >= checkDuration) {
@@ -306,9 +300,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
                         if (takeoffDetected == false) {
                             takeoffDetected = true;
-
-                        /* average value * time */
-
                             takeOffCounter++;
                         }
                     }
@@ -358,6 +349,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
                 }
 
+                totalAccIntegrated = 0;
+
                 lastUpdate = 0;
                 accSum = 0;
                 accCount = 0;
@@ -368,14 +361,110 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
                 takeoffDetected = false;
                 isAcceleration = currentAcceleration;
+                duration = 0;
+
+
+                compansation = 0;
+                /* Try to get noise values */
+                if ((aXM > 0) && (aYM < 0) && (aZM > 0))
+                {
+                    /* up, upper left */
+                    compansation = (float) 0.1;
+                }
+                else if ((aXM < 0) && (aYM < 0) && (aZM > 0))
+                {
+                    /* up, upper right */
+                    compansation = (float) 0.1;
+                }
+                else if ((aXM > 0) && (aYM > 0) && (aZM > 0))
+                {
+                    /* up, lower left */
+                    if (aZM > 5)
+                    {
+                        compansation = (float) 0.2;
+                    }
+                    else
+                    {
+                        compansation = (float) 0.3;
+                    }
+
+                }
+                else if ((aXM < 0) && (aYM > 0) && (aZM > 0))
+                {
+                    /* up, upper right */
+                    if (aZM > 5)
+                    {
+                        compansation = (float) 0.2;
+                    }
+                    else
+                    {
+                        compansation = (float) 0.3;
+                    }
+
+                }
+                else if ((aXM < 0) && (aYM < 0) && (aZM < 0))
+                {
+                    /* Down , upper left */
+                    if (aZM < -6 )
+                    {
+                        compansation = (float) -0.4;
+                    }
+                    else if (aZM < -1)
+                    {
+                        compansation = (float) 0.1;
+                    }
+                }
+                else if ((aXM > 0) && (aYM < 0) && (aZM < 0))
+                {
+                    if (aZM < -3 )
+                    {
+                        compansation = (float) -0.4;
+                    }
+                    else if (aZM < 0)
+                    {
+                        compansation = (float) -0.1;
+                    }
+
+                }
+                else if ((aXM < 0) && (aYM > 0) && (aZM < 0))
+                {
+                    if (aZM > -3)
+                    {
+                        compansation = (float) 0.3;
+                    }
+                    else if (aZM < -6)
+                    {
+                        compansation = (float) -0.4;
+                    }
+                }
+                else if ((aXM > 0) && (aYM > 0) && (aZM < 0))
+                {
+                    if (aZM > -3)
+                    {
+                        compansation = (float) 0.3;
+                    }
+                    else if (aZM < -6)
+                    {
+                        compansation = (float) -0.4;
+                    }
+
+
+                }
+                else
+                {
+                    compansation = (float) 0.0;
+                }
+
+                aXMPrev = aXM;
+                aZMPrev = aZM;
+                aYMPrev = aYM;
 
             }
 
-            aXMPrev = aXM;
-            aZMPrev = aZM;
-            aYMPrev = aYM;
 
             accTotalPrev = accTotal;
+
+
 
 
             str = String.format("Total: %.4f, %.4f, %.4f\n", accTotal, accTotalAbs, totalMax);
