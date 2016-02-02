@@ -27,6 +27,8 @@ import com.jjoe64.graphview.series.LineGraphSeries;
 
 import org.w3c.dom.Text;
 
+import java.util.List;
+
 import static java.lang.Math.sqrt;
 
 
@@ -61,8 +63,15 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     boolean isAcceleration = true;
     boolean takeoffDetected = false;
     float checkDuration=2000;
-    double checkAcc=0.1;
+    double checkAcc=0.2;
     float compansation  = 0;
+    float devXPrev, devYPrev, devZPrev;
+    float[] xBuf = {0,0,0,0,0,0,0,0,0,0};
+
+    float[] yBuf = {0,0,0,0,0,0,0,0,0,0};
+    float[] zBuf = {9,9,9,9,9,9,9,9,9,9};
+    int bufIndex = 0;
+
 
 
 
@@ -77,6 +86,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     long startTimeMs = System.currentTimeMillis();
 
     LineGraphSeries<DataPoint> series = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesY = new LineGraphSeries<DataPoint>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,7 +118,14 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
         GraphView graph = (GraphView) findViewById(R.id.graph);
         series = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
+        seriesY = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
+
+        seriesY.setColor(Color.RED);
+
         graph.addSeries(series);
+        graph.addSeries(seriesY);
+
+
         graph.setKeepScreenOn(true);
 
         graph.getViewport().setXAxisBoundsManual(true);
@@ -224,6 +241,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             float[] values = event.values;
             float accTotal, accTotalAbs;
             float aZI2, aXI2, aYI2;
+            float devX, devY, devZ;
 
 
             // Movement
@@ -231,9 +249,41 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             y = values[1];
             z = values[2];
 
+            /*
             aXM = (float) (aXM + x)/2;
             aYM = (float) (aYM + y)/2;
             aZM = (float) (aZM + z)/2;
+            */
+
+            xBuf[bufIndex] = x;
+            yBuf[bufIndex] = y;
+            zBuf[bufIndex] = z;
+            bufIndex++;
+            if (bufIndex >= 10)
+            {
+                bufIndex = 0;
+            }
+            aXM = 0;
+            aYM = 0;
+            aZM = 0;
+
+            for (int i = 0; i < 10; i++)
+            {
+                aXM += xBuf[i];
+                aYM += yBuf[i];
+                aZM += zBuf[i];
+            }
+
+            aXM = aXM / 10;
+            aYM = aYM / 10;
+            aZM = aZM / 10;
+
+
+
+            devX = aXMPrev - aXM;
+            devY = aYMPrev - aYM;
+            devZ = aZMPrev - aZM;
+
 
             scrollTextView.setText("<Accelerometer>\n");
             str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", aXM, aYM, aZM);
@@ -253,7 +303,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
             {
                 series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, 100);
-                //series.appendData(new DataPoint((currentTimeMs - startTimeMs), aXM), true, 100);
+                seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, 100);
             }
 
             //graph.getViewport().setMinX(series.getLowestValueX());
@@ -264,12 +314,19 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
             long actualTime = event.timestamp;
 
+            /*
             if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
                     ((aXM * aXMPrev) > 0) && ((aYM * aYMPrev) > 0) )
+                    */
+            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
+                    ((devXPrev * devX) > 0) && ((devYPrev * devY) > 0) && ((devZPrev * devZ) > 0) )
             {
                 if (lastUpdate == 0) {
                     lastUpdate = System.currentTimeMillis();
                     duration = 0;
+                    devXPrev = devX;
+                    devYPrev = devY;
+                    devZPrev = devZ;
                 }
                 else
                 {
@@ -364,7 +421,9 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 duration = 0;
 
 
+
                 compansation = 0;
+
                 /* Try to get noise values */
                 if ((aXM > 0) && (aYM < 0) && (aZM > 0))
                 {
@@ -381,7 +440,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     /* up, lower left */
                     if (aZM > 5)
                     {
-                        compansation = (float) 0.2;
+                        compansation = (float) 0.1;
                     }
                     else
                     {
@@ -398,7 +457,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     }
                     else
                     {
-                        compansation = (float) 0.3;
+                        compansation = (float) 0.4;
                     }
 
                 }
@@ -455,9 +514,15 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     compansation = (float) 0.0;
                 }
 
+
+                //compansation = 0;
+
                 aXMPrev = aXM;
                 aZMPrev = aZM;
                 aYMPrev = aYM;
+                devXPrev = devX;
+                devYPrev = devY;
+                devZPrev = devZ;
 
             }
 
