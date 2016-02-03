@@ -62,15 +62,18 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     private long takeOffCounter=0;
     boolean isAcceleration = true;
     boolean takeoffDetected = false;
-    float checkDuration=2000;
-    double checkAcc=0.2;
-    float compansation  = 0;
+    float checkDuration=4000;
+    double checkAcc=0.05;
+    float compensation  = 0;
     float devXPrev, devYPrev, devZPrev;
-    float[] xBuf = {0,0,0,0,0,0,0,0,0,0};
-
-    float[] yBuf = {0,0,0,0,0,0,0,0,0,0};
-    float[] zBuf = {9,9,9,9,9,9,9,9,9,9};
+    float[] xBuf = new float[100];
+    float[] yBuf = new float[100];
+    float[] zBuf = new float[100];
     int bufIndex = 0;
+    int xDataLength = 0;
+    private long period = 0;
+    private long preMs = 0, preSec;
+    long count;
 
 
 
@@ -87,6 +90,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
     LineGraphSeries<DataPoint> series = new LineGraphSeries<DataPoint>();
     LineGraphSeries<DataPoint> seriesY = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesX = new LineGraphSeries<DataPoint>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -119,11 +123,13 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
         GraphView graph = (GraphView) findViewById(R.id.graph);
         series = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
         seriesY = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
-
+        seriesX = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
         seriesY.setColor(Color.RED);
+        seriesX.setColor(Color.BLACK);
 
         graph.addSeries(series);
         graph.addSeries(seriesY);
+        graph.addSeries(seriesX);
 
 
         graph.setKeepScreenOn(true);
@@ -229,6 +235,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
         boolean isGyroscopeCalibrated = false;
         boolean currentAcceleration = false;
         long currentTimeMs = 0;
+        long freq= 0;
+
         String str;
 
         currentTimeMs = System.currentTimeMillis();
@@ -242,12 +250,33 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             float accTotal, accTotalAbs;
             float aZI2, aXI2, aYI2;
             float devX, devY, devZ;
+            final int bufLenth = 20;
+            final boolean enableCompensation = false;
 
 
             // Movement
             x = values[0];
             y = values[1];
             z = values[2];
+
+            if (preMs == 0) {
+                preMs = currentTimeMs;
+                count = 0;
+            }
+            else
+            {
+                period =(currentTimeMs - preMs);
+
+                if ((period) < 50)
+                {
+                    /* 20 Hz */
+                    return;
+                }
+
+                preMs = currentTimeMs;
+
+            }
+
 
             /*
             aXM = (float) (aXM + x)/2;
@@ -259,7 +288,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             yBuf[bufIndex] = y;
             zBuf[bufIndex] = z;
             bufIndex++;
-            if (bufIndex >= 10)
+            if (bufIndex >= bufLenth)
             {
                 bufIndex = 0;
             }
@@ -267,16 +296,16 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             aYM = 0;
             aZM = 0;
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < bufLenth; i++)
             {
                 aXM += xBuf[i];
                 aYM += yBuf[i];
                 aZM += zBuf[i];
             }
 
-            aXM = aXM / 10;
-            aYM = aYM / 10;
-            aZM = aZM / 10;
+            aXM = aXM / bufLenth;
+            aYM = aYM / bufLenth;
+            aZM = aZM / bufLenth;
 
 
 
@@ -285,15 +314,16 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             devZ = aZMPrev - aZM;
 
 
-            scrollTextView.setText("<Accelerometer>\n");
-            str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", aXM, aYM, aZM);
+            str = String.format("Accel, %d Hz\n", count);
             scrollTextView.setText(str);
+            str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", aXM, aYM, aZM);
+            scrollTextView.append(str);
 
             x2 = aXM * aXM;
             y2 = aYM * aYM;
             z2 = aZM * aZM;
 
-            accTotal = (float) (sqrt(x2 + y2 + z2) - SensorManager.GRAVITY_EARTH  + compansation);
+            accTotal = (float) (sqrt(x2 + y2 + z2) - SensorManager.GRAVITY_EARTH  + compensation);
             //accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
 
             accTotalAbs = (float) (sqrt(accTotal * accTotal));
@@ -302,12 +332,23 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             GraphView graph = (GraphView) findViewById(R.id.graph);
 
             {
-                series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, 100);
-                seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, 100);
+                if ((series.getHighestValueX() - series.getLowestValueX()) < 4000) {
+                    xDataLength++;
+                    series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), false, 100);
+                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), false, 100);
+                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), false, 100);
+
+                }
+                else
+                {
+                    series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, xDataLength);
+                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), true, xDataLength);
+                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, xDataLength);
+                }
             }
 
             //graph.getViewport().setMinX(series.getLowestValueX());
-            //graph.getViewport().setMaxX(series.getHighestValueX());
+            //graph.getViewport().setMaxX(series.getLowestValueX() + 4000);
 
             //accelSquareRoot2 = (ax * ax + ay * ay + az * az) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH);
             //accelationSquareRoot = (float) (sqrt(ax * ax + ay * ay + az * az) - SensorManager.GRAVITY_EARTH);
@@ -319,14 +360,11 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     ((aXM * aXMPrev) > 0) && ((aYM * aYMPrev) > 0) )
                     */
             if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
-                    ((devXPrev * devX) > 0) && ((devYPrev * devY) > 0) && ((devZPrev * devZ) > 0) )
+                    (((devXPrev * devX) > 0) || ((devYPrev * devY) > 0) || ((devZPrev * devZ) > 0)))
             {
                 if (lastUpdate == 0) {
                     lastUpdate = System.currentTimeMillis();
                     duration = 0;
-                    devXPrev = devX;
-                    devYPrev = devY;
-                    devZPrev = devZ;
                 }
                 else
                 {
@@ -420,102 +458,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 isAcceleration = currentAcceleration;
                 duration = 0;
 
-
-
-                compansation = 0;
-
-                /* Try to get noise values */
-                if ((aXM > 0) && (aYM < 0) && (aZM > 0))
-                {
-                    /* up, upper left */
-                    compansation = (float) 0.1;
-                }
-                else if ((aXM < 0) && (aYM < 0) && (aZM > 0))
-                {
-                    /* up, upper right */
-                    compansation = (float) 0.1;
-                }
-                else if ((aXM > 0) && (aYM > 0) && (aZM > 0))
-                {
-                    /* up, lower left */
-                    if (aZM > 5)
-                    {
-                        compansation = (float) 0.1;
-                    }
-                    else
-                    {
-                        compansation = (float) 0.3;
-                    }
-
-                }
-                else if ((aXM < 0) && (aYM > 0) && (aZM > 0))
-                {
-                    /* up, upper right */
-                    if (aZM > 5)
-                    {
-                        compansation = (float) 0.2;
-                    }
-                    else
-                    {
-                        compansation = (float) 0.4;
-                    }
-
-                }
-                else if ((aXM < 0) && (aYM < 0) && (aZM < 0))
-                {
-                    /* Down , upper left */
-                    if (aZM < -6 )
-                    {
-                        compansation = (float) -0.4;
-                    }
-                    else if (aZM < -1)
-                    {
-                        compansation = (float) 0.1;
-                    }
-                }
-                else if ((aXM > 0) && (aYM < 0) && (aZM < 0))
-                {
-                    if (aZM < -3 )
-                    {
-                        compansation = (float) -0.4;
-                    }
-                    else if (aZM < 0)
-                    {
-                        compansation = (float) -0.1;
-                    }
-
-                }
-                else if ((aXM < 0) && (aYM > 0) && (aZM < 0))
-                {
-                    if (aZM > -3)
-                    {
-                        compansation = (float) 0.3;
-                    }
-                    else if (aZM < -6)
-                    {
-                        compansation = (float) -0.4;
-                    }
-                }
-                else if ((aXM > 0) && (aYM > 0) && (aZM < 0))
-                {
-                    if (aZM > -3)
-                    {
-                        compansation = (float) 0.3;
-                    }
-                    else if (aZM < -6)
-                    {
-                        compansation = (float) -0.4;
-                    }
-
-
-                }
-                else
-                {
-                    compansation = (float) 0.0;
-                }
-
-
-                //compansation = 0;
+                compensation = (float) 0.27;
 
                 aXMPrev = aXM;
                 aZMPrev = aZM;
