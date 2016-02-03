@@ -36,7 +36,7 @@ import static java.lang.Math.sqrt;
 public class ScrollingActivity extends AppCompatActivity implements SensorEventListener {
 
     private SensorManager sensorManager;
-    private long lastUpdate;
+    private long lastUpdateX, lastUpdateY, lastUpdateZ;
     private boolean isMagnetosensor;
     private boolean isAccellerometer;
     private boolean isGiroScope;
@@ -53,7 +53,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     float aXMPrev, aYMPrev, aZMPrev;
     float totalAccIntegrated = 0;
     float accTotalPrev = 0;
-    long duration = 0;
+    long durationY = 0, durationX = 0, durationZ;
     float totalMax = 0;
     float integratedMax = 0;
     float accSum = 0;
@@ -62,8 +62,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     private long takeOffCounter=0;
     boolean isAcceleration = true;
     boolean takeoffDetected = false;
-    float checkDuration=4000;
-    double checkAcc=0.05;
+    float checkDuration=7000;
+    double checkAcc=0.1;
     float compensation  = 0;
     float devXPrev, devYPrev, devZPrev;
     float[] xBuf = new float[100];
@@ -167,7 +167,10 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 SensorManager.SENSOR_DELAY_UI);
 
 
-        lastUpdate = 0;
+
+        lastUpdateX = 0;
+        lastUpdateY = 0;
+        lastUpdateZ = 0;
 
         final Button checkButton = (Button)findViewById(R.id.CheckButton);
         Button button = (Button)findViewById(R.id.button);
@@ -335,15 +338,20 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 if ((series.getHighestValueX() - series.getLowestValueX()) < 4000) {
                     xDataLength++;
                     series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), false, 100);
-                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), false, 100);
-                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), false, 100);
+                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), false, 100);
+                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), false, 100);
+
+                    if (xDataLength == 40)
+                    {
+                        compensation = (accTotal * -1);
+                    }
 
                 }
                 else
                 {
                     series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, xDataLength);
-                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), true, xDataLength);
-                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, xDataLength);
+                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, xDataLength);
+                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), true, xDataLength);
                 }
             }
 
@@ -355,42 +363,106 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
             long actualTime = event.timestamp;
 
+            if (accTotalAbs > totalMax)
+            {
+                totalMax = accTotalAbs;
+            }
             /*
             if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
                     ((aXM * aXMPrev) > 0) && ((aYM * aYMPrev) > 0) )
                     */
-            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
-                    (((devXPrev * devX) > 0) || ((devYPrev * devY) > 0) || ((devZPrev * devZ) > 0)))
+            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0))
             {
-                if (lastUpdate == 0) {
-                    lastUpdate = System.currentTimeMillis();
-                    duration = 0;
+
+                if (lastUpdateX == 0) {
+                    lastUpdateX = System.currentTimeMillis();
+                    durationX = 0;
+                    devXPrev = devX;
+
+                }
+                if (lastUpdateY == 0) {
+                    lastUpdateY = System.currentTimeMillis();
+                    devYPrev = devY;
+                    durationY = 0;
+
+                }
+
+                if (lastUpdateZ == 0) {
+                    lastUpdateZ = System.currentTimeMillis();
+                    devZPrev = devZ;
+                    durationZ = 0;
+                }
+
+                if ((devXPrev * devX) > 0) {
+
+                    durationX = currentTimeMs - lastUpdateX;
+                    /*
+                    if (sqrt(devX * devX) > 0.5) {
+                        durationX = currentTimeMs - lastUpdateX;
+                    }
+                    else
+                    {
+                        lastUpdateX = currentTimeMs;
+                        durationX = 0;
+                    }
+                    */
+
                 }
                 else
                 {
-                    duration = currentTimeMs - lastUpdate;
+                    durationX = 0;
+                    lastUpdateX = 0;
+
                 }
+
+                if (((devYPrev * devY) > 0) /* && ( sqrt(devY * devY) > 0.5) */)
+                {
+                    durationY = currentTimeMs - lastUpdateY;
+                    /*
+                    if ( sqrt(devY * devY) > 0.5) {
+                        durationY = currentTimeMs - lastUpdateY;
+                    }
+                    else
+                    {
+                        lastUpdateY = currentTimeMs;
+                        durationY = 0;
+                    }
+                    */
+                }
+                else
+                {
+                    durationY = 0;
+                    lastUpdateY = currentTimeMs;
+                }
+
+                if (((devZPrev * devZ) > 0))
+                {
+                    durationZ = currentTimeMs - lastUpdateY;
+                }
+                else
+                {
+                    lastUpdateZ = 0;
+                    durationZ = 0;
+                }
+
+                //devXPrev = devX;
+                //devYPrev = devY;
+                //devZPrev = devZ;
+
 
                 /* Add all the diff v */
                 accSum += accTotalAbs;
                 accCount++;
 
-                totalAccIntegrated = (accSum / accCount) * duration;
+                totalAccIntegrated = (accSum / accCount) * durationY;
 
                 if (totalAccIntegrated > integratedMax)
                 {
                     integratedMax = totalAccIntegrated;
                 }
 
-                if (accTotalAbs > totalMax)
-                {
-                    totalMax = accTotalAbs;
-                }
-
-
-
-                /* Get Moved duration */
-                    if (duration >= checkDuration) {
+                /* Get Moved durationY */
+                    if ((durationY >= checkDuration) || (durationX >= checkDuration)) {
                         //scrollTextView.append("1 sec!!!\n");
 
                         if (takeoffDetected == false) {
@@ -399,54 +471,24 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                         }
                     }
 
-                if (duration > durationMax)
+                if (durationY > durationMax)
                 {
-                    durationMax = duration;
+                    durationMax = durationY;
+                }
+                if (durationX > durationMax)
+                {
+                    durationMax = durationX;
                 }
 
             }
             else
             {
 
-                if (lastUpdate != 0) {
-                    /* Check moving direction */
-                    aXI2 = aXI * aXI;
-                    aYI2 = aYI * aYI;
-                    aZI2 = aZI * aZI;
-
-                    if (aXI2 > aYI2)
-                    {
-                        if (aXI2 > aZI2)
-                        {
-                        /* Moving X direction */
-                            movDirection = 0;
-                        }
-                        else
-                        {
-                        /* Moving Z */
-                            movDirection = 2;
-                        }
-
-                    }
-                    else
-                    {
-                        if (aYI2 > aZI2)
-                        {
-                        /* movint Y */
-                            movDirection = 1;
-                        }
-                        else
-                        {
-                        /* mvoing Z */
-                            movDirection = 2;
-                        }
-                    }
-
-                }
-
                 totalAccIntegrated = 0;
 
-                lastUpdate = 0;
+                lastUpdateX = 0;
+                lastUpdateY = 0;
+                lastUpdateZ = 0;
                 accSum = 0;
                 accCount = 0;
 
@@ -456,16 +498,17 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
                 takeoffDetected = false;
                 isAcceleration = currentAcceleration;
-                duration = 0;
+                durationY = 0;
 
-                compensation = (float) 0.27;
+
 
                 aXMPrev = aXM;
                 aZMPrev = aZM;
                 aYMPrev = aYM;
-                devXPrev = devX;
-                devYPrev = devY;
-                devZPrev = devZ;
+
+                devXPrev = 0;
+                devYPrev = 0;
+                devZPrev = 0;
 
             }
 
@@ -487,7 +530,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             scrollTextView.append(str);
 
 
-            str = String.format("Dur: %d , %d ms\n", duration, durationMax);
+            str = String.format("Dur: %d , %d ms\n", durationY, durationMax);
             scrollTextView.append(str);
 
             str = String.format("TakeOff: %d\n", takeOffCounter);
