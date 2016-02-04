@@ -36,7 +36,8 @@ import static java.lang.Math.sqrt;
 public class ScrollingActivity extends AppCompatActivity implements SensorEventListener {
 
     private SensorManager sensorManager;
-    private long lastUpdateX, lastUpdateY, lastUpdateZ;
+    /* time ms at the start of motion */
+    private long accXMotionStartedMs = 0, accYMotionStartedMs = 0, accZMotionStartedMs = 0;
     private boolean isMagnetosensor;
     private boolean isAccellerometer;
     private boolean isGiroScope;
@@ -44,66 +45,106 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     /* accelerometer */
     /* Current Accelerometer */
     private Sensor mAccelerometer;
-    float aX, aY, aZ;
+    //float aX, aY, aZ;
+
     /* Average value without noise */
-    float aXM = 0, aYM = 0, aZM = 0;
+    float accXMean = 0, accYMean = 0, accZMean = 0;
+    /* previous average mean value */
+    float accXMeanPrev = 0, accYMeanPrev = 0, accZMeanPrev = 0;
+
     /* Integrated Avlue */
-    float aXI = 0, aYI = 0, aZI = 0;
-    int movDirection = 0;
-    float aXMPrev, aYMPrev, aZMPrev;
+    //float aXI = 0, aYI = 0, aZI = 0;
+    //int movDirection = 0;
+    //float accXMeanPrev, accYMeanPrev, accZMeanPrev;
+
     float totalAccIntegrated = 0;
-    float accTotalPrev = 0;
-    long durationY = 0, durationX = 0, durationZ;
-    float totalMax = 0;
     float integratedMax = 0;
+
+    /* total acceleration - G */
+    float accTotalPrev = 0;
+
+    long durationY = 0, durationX = 0, durationZ = 0;
+
+    /* max absolute total sqrt(x^2 + y^2 + Z^2) */
+    float totalMaxAbs = 0;
+
+
     float accSum = 0;
     private long accCount= 0;
-    private long durationMax = 0;
+    private long durationMaxX = 0, durationMaxY = 0;
+
     private long takeOffCounter=0;
-    boolean isAcceleration = true;
+
+    //boolean isAcceleration = true;
     boolean takeoffDetected = false;
-    float checkDuration=7000;
+
+    /* ms to detect take off, 7 seconds*/
+    long checkDuration = 7000;
+
+    /* minimum absolute acceleration to detect movement */
     double checkAcc=0.1;
+
+    /* compensation value after calibration */
     float compensation  = 0;
+
+    /* deviation from previous position */
     float devXPrev, devYPrev, devZPrev;
+
     float[] xBuf = new float[100];
     float[] yBuf = new float[100];
     float[] zBuf = new float[100];
     int bufIndex = 0;
-    int xDataLength = 0;
-    private long period = 0;
-    private long preMs = 0, preSec;
-    long count;
 
+    /* Number of X-axis values */
+    int xDataLength = 0;
+    int accCalSample = 40;
+    int accEventCounter = 0;
+
+    /* Peroid of accelerometer event to get */
+    private long accPeriod = 0;
+    private long accFreq = 20;
+
+    /* Time stapm in ms */
+    private long accMsPrev = 0;
+
+    //long count;
+
+    LineGraphSeries<DataPoint> seriesAccX = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesAccY = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesAccZ = new LineGraphSeries<DataPoint>();
 
 
 
     /* magnetic field */
     float magSquareRoot;
-    float mx, my, mz;
+    float mX, mY, mZ;
 
     /* gyroscope */
     float gyroSquareRoot;
-    float gx, gy, gz;
+    float gX, gY, gZ;
 
     long startTimeMs = System.currentTimeMillis();
 
-    LineGraphSeries<DataPoint> series = new LineGraphSeries<DataPoint>();
-    LineGraphSeries<DataPoint> seriesY = new LineGraphSeries<DataPoint>();
-    LineGraphSeries<DataPoint> seriesX = new LineGraphSeries<DataPoint>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_scrolling);
-        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        final TextView checkTextView = (TextView)findViewById(R.id.checkTextView);
-        checkTextView.setText("current: " + checkDuration + ",  " + checkAcc);
-        final EditText durationTextBox = (EditText)findViewById(R.id.durationTextBox);
+        //final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        //setSupportActionBar(toolbar);
+        //final TextView checkTextView = (TextView)findViewById(R.id.checkTextView);
+        //checkTextView.setText("current: " + checkDuration + ",  " + checkAcc);
+        final EditText accDurationTextBox = (EditText)findViewById(R.id.durationTextBox);
         final EditText accTextBox = (EditText)findViewById(R.id.accTextBox);
 
+        String str;
 
+        str = String.format("%.1f", checkAcc);
+        accTextBox.setText(str);
+        str = String.format("%d", checkDuration);
+        accDurationTextBox.setText(str);
+
+        /*
 
         final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -114,22 +155,29 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             }
         });
 
+*/
+
         TextView scrollTextView = (TextView) findViewById(R.id.scrollTextView);
         scrollTextView.setMovementMethod(new ScrollingMovementMethod());
         scrollTextView.setVerticalScrollBarEnabled(true);
         scrollTextView.setMaxLines(30);
         scrollTextView.setText("");
 
-        GraphView graph = (GraphView) findViewById(R.id.graph);
-        series = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
-        seriesY = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
-        seriesX = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
-        seriesY.setColor(Color.RED);
-        seriesX.setColor(Color.BLACK);
 
-        graph.addSeries(series);
-        graph.addSeries(seriesY);
-        graph.addSeries(seriesX);
+        GraphView graph = (GraphView) findViewById(R.id.graph);
+        seriesAccX = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
+        seriesAccY = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
+        seriesAccZ = new LineGraphSeries<DataPoint>(new DataPoint[] {new DataPoint(0,0)});
+
+        seriesAccX.setColor(Color.CYAN);
+        seriesAccY.setColor(Color.RED);
+        seriesAccZ.setColor(Color.BLACK);
+
+
+
+        graph.addSeries(seriesAccX);
+        graph.addSeries(seriesAccY);
+        graph.addSeries(seriesAccZ);
 
 
         graph.setKeepScreenOn(true);
@@ -168,9 +216,9 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
 
 
-        lastUpdateX = 0;
-        lastUpdateY = 0;
-        lastUpdateZ = 0;
+        accXMotionStartedMs = 0;
+        accYMotionStartedMs = 0;
+        accZMotionStartedMs = 0;
 
         final Button checkButton = (Button)findViewById(R.id.CheckButton);
         Button button = (Button)findViewById(R.id.button);
@@ -179,13 +227,29 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 new Button.OnClickListener() {
                     public void onClick(View v) {
                         totalAccIntegrated=0;
-                        totalMax=0;
+                        totalMaxAbs=0;
                         integratedMax = 0;
                         accSum = 0;
                         accCount= 0;
-                        durationMax = 0;
+                        durationMaxX = 0;
+                        durationMaxY = 0;
                         takeOffCounter=0;
                         accTotalPrev = 0;
+                        accXMean = 0;
+                        accYMean = 0;
+                        accZMean = 0;
+                        accXMeanPrev = 0;
+                        accYMeanPrev = 0;
+                        accZMeanPrev = 0;
+                        durationY = 0;
+                        durationX = 0;
+                        durationZ = 0;
+                        takeoffDetected = false;
+                        compensation  = 0;
+                        accXMotionStartedMs = 0;
+                        accYMotionStartedMs = 0;
+                        accZMotionStartedMs = 0;
+                        accEventCounter = 0;
                     }
                 }
         );
@@ -193,15 +257,15 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
         checkButton.setOnClickListener(
                 new Button.OnClickListener() {
                     public void onClick(View v) {
-                        if ((accTextBox.getText().length() != 0) && (durationTextBox.getText().length() != 0))
+                        if ((accTextBox.getText().length() != 0) && (accDurationTextBox.getText().length() != 0))
                         {
                             checkAcc = Double.valueOf(accTextBox.getText().toString());
-                            checkDuration = Float.valueOf(durationTextBox.getText().toString());
-                            durationTextBox.setText("");
-                            accTextBox.setText("");
+                            checkDuration = Long.valueOf(accDurationTextBox.getText().toString());
+                            //durationTextBox.setText("");
+                            //accTextBox.setText("");
 
                         }
-                        checkTextView.setText("current: " + checkDuration + ",   " + checkAcc);
+                        //checkTextView.setText("current: " + checkDuration + ",   " + checkAcc);
                     }
                 }
         );
@@ -234,11 +298,11 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     }
 
     private void getAccelerometer(SensorEvent event) {
-        boolean isMagnetometerCalibrated = false;
-        boolean isGyroscopeCalibrated = false;
-        boolean currentAcceleration = false;
+       // boolean isMagnetometerCalibrated = false;
+       // boolean isGyroscopeCalibrated = false;
+       // boolean currentAcceleration = false;
         long currentTimeMs = 0;
-        long freq= 0;
+        // long freq= 0;
 
         String str;
 
@@ -251,10 +315,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             float x2, y2, z2;
             float[] values = event.values;
             float accTotal, accTotalAbs;
-            float aZI2, aXI2, aYI2;
             float devX, devY, devZ;
             final int bufLenth = 20;
-            final boolean enableCompensation = false;
 
 
             // Movement
@@ -262,31 +324,35 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             y = values[1];
             z = values[2];
 
-            if (preMs == 0) {
-                preMs = currentTimeMs;
-                count = 0;
+            /* number of event */
+            accEventCounter++;
+
+            if (accMsPrev == 0) {
+                accMsPrev = currentTimeMs;
             }
             else
             {
-                period =(currentTimeMs - preMs);
+                /* time stamp */
+                accPeriod = (currentTimeMs - accMsPrev);
 
-                if ((period) < 50)
+                if ((accPeriod) < (1000/accFreq))
                 {
                     /* 20 Hz */
                     return;
                 }
 
-                preMs = currentTimeMs;
+                accMsPrev = currentTimeMs;
 
             }
 
 
             /*
-            aXM = (float) (aXM + x)/2;
-            aYM = (float) (aYM + y)/2;
-            aZM = (float) (aZM + z)/2;
+            accXMean = (float) (accXMean + x)/2;
+            accYMean = (float) (accYMean + y)/2;
+            accZMean = (float) (accZMean + z)/2;
             */
 
+            /* remove small high frequency noise. */
             xBuf[bufIndex] = x;
             yBuf[bufIndex] = y;
             zBuf[bufIndex] = z;
@@ -295,114 +361,143 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             {
                 bufIndex = 0;
             }
-            aXM = 0;
-            aYM = 0;
-            aZM = 0;
+
+            accXMean = 0;
+            accYMean = 0;
+            accZMean = 0;
 
             for (int i = 0; i < bufLenth; i++)
             {
-                aXM += xBuf[i];
-                aYM += yBuf[i];
-                aZM += zBuf[i];
+                accXMean += xBuf[i];
+                accYMean += yBuf[i];
+                accZMean += zBuf[i];
             }
 
-            aXM = aXM / bufLenth;
-            aYM = aYM / bufLenth;
-            aZM = aZM / bufLenth;
+            /* Get Average value */
+            accXMean = accXMean / bufLenth;
+            accYMean = accYMean / bufLenth;
+            accZMean = accZMean / bufLenth;
+
+            /* deviation from previous mean value */
+            if ((accXMeanPrev == 0) && (accYMeanPrev == 0) && (accZMeanPrev == 0)){
+                devX = 0;
+                devY = 0;
+                devZ = 0;
+            }
+            else
+            {
+                devX = accXMeanPrev - accXMean;
+                devY = accYMeanPrev - accYMean;
+                devZ = accZMeanPrev - accZMean;
+
+            }
 
 
-
-            devX = aXMPrev - aXM;
-            devY = aYMPrev - aYM;
-            devZ = aZMPrev - aZM;
-
-
-            str = String.format("Accel, %d Hz\n", count);
+            str = String.format("Accel: %d Hz, No. %d\n", accFreq, accEventCounter );
             scrollTextView.setText(str);
-            str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", aXM, aYM, aZM);
+            str = String.format("X: %.04f, Y: %.04f, Z: %.04f\n", accXMean, accYMean, accZMean);
             scrollTextView.append(str);
 
-            x2 = aXM * aXM;
-            y2 = aYM * aYM;
-            z2 = aZM * aZM;
+            /* square values */
+            x2 = accXMean * accXMean;
+            y2 = accYMean * accYMean;
+            z2 = accZMean * accZMean;
 
+            /* possible motion values */
             accTotal = (float) (sqrt(x2 + y2 + z2) - SensorManager.GRAVITY_EARTH  + compensation);
+
+
             //accTotal = (x2 + y2 + z2) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH) - 1;
 
+            /* sqrt of motion values to remove negative values */
             accTotalAbs = (float) (sqrt(accTotal * accTotal));
 
 
-            GraphView graph = (GraphView) findViewById(R.id.graph);
+            //GraphView graph = (GraphView) findViewById(R.id.graph);
 
+
+            if ((seriesAccX.getHighestValueX() - seriesAccX.getLowestValueX()) < 4000) {
+                xDataLength++;
+                seriesAccX.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), false, 100);
+                seriesAccY.appendData(new DataPoint((currentTimeMs - startTimeMs), accYMean), false, 100);
+                seriesAccZ.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), false, 100);
+
+
+            }
+            else
             {
-                if ((series.getHighestValueX() - series.getLowestValueX()) < 4000) {
-                    xDataLength++;
-                    series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), false, 100);
-                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), false, 100);
-                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), false, 100);
-
-                    if (xDataLength == 40)
-                    {
-                        compensation = (accTotal * -1);
-                    }
-
-                }
-                else
-                {
-                    series.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, xDataLength);
-                    seriesY.appendData(new DataPoint((currentTimeMs - startTimeMs), aYM), true, xDataLength);
-                    seriesX.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), true, xDataLength);
-                }
+                seriesAccX.appendData(new DataPoint((currentTimeMs - startTimeMs), accTotal), true, xDataLength);
+                seriesAccY.appendData(new DataPoint((currentTimeMs - startTimeMs), accYMean), true, xDataLength);
+                seriesAccZ.appendData(new DataPoint((currentTimeMs - startTimeMs), devY), true, xDataLength);
             }
 
-            //graph.getViewport().setMinX(series.getLowestValueX());
-            //graph.getViewport().setMaxX(series.getLowestValueX() + 4000);
+            if (accEventCounter == accCalSample)
+            {
+                /* calibrated compensation data */
+                compensation = (accTotal * -1);
+            }
 
+
+
+            //graph.getViewport().setMinX(seriesAccX.getLowestValueX());
+            //graph.getViewport().setMaxX(seriesAccX.getLowestValueX() + 4000);
             //accelSquareRoot2 = (ax * ax + ay * ay + az * az) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH);
             //accelationSquareRoot = (float) (sqrt(ax * ax + ay * ay + az * az) - SensorManager.GRAVITY_EARTH);
 
-            long actualTime = event.timestamp;
-
-            if (accTotalAbs > totalMax)
+            /* Update max motion value */
+            if (accTotalAbs > totalMaxAbs)
             {
-                totalMax = accTotalAbs;
+                totalMaxAbs = accTotalAbs;
             }
-            /*
-            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) &&
-                    ((aXM * aXMPrev) > 0) && ((aYM * aYMPrev) > 0) )
-                    */
+
+            if (devX > 2)
+            {
+
+            }
+
+            if (devY > 2)
+            {
+
+            }
+
+            if(devZ > 2)
+            {
+                
+            }
+
+
             if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0))
             {
 
-                if (lastUpdateX == 0) {
-                    lastUpdateX = System.currentTimeMillis();
+                if (accXMotionStartedMs == 0) {
+                    accXMotionStartedMs = System.currentTimeMillis();
                     durationX = 0;
                     devXPrev = devX;
 
                 }
-                if (lastUpdateY == 0) {
-                    lastUpdateY = System.currentTimeMillis();
+                if (accYMotionStartedMs == 0) {
+                    accYMotionStartedMs = System.currentTimeMillis();
                     devYPrev = devY;
                     durationY = 0;
 
                 }
 
-                if (lastUpdateZ == 0) {
-                    lastUpdateZ = System.currentTimeMillis();
+                if (accZMotionStartedMs == 0) {
+                    accZMotionStartedMs = System.currentTimeMillis();
                     devZPrev = devZ;
                     durationZ = 0;
                 }
 
                 if ((devXPrev * devX) > 0) {
 
-                    durationX = currentTimeMs - lastUpdateX;
+                    durationX = currentTimeMs - accXMotionStartedMs;
                     /*
                     if (sqrt(devX * devX) > 0.5) {
-                        durationX = currentTimeMs - lastUpdateX;
+                        durationX = currentTimeMs - accXMotionStartedMs;
                     }
                     else
                     {
-                        lastUpdateX = currentTimeMs;
+                        accXMotionStartedMs = currentTimeMs;
                         durationX = 0;
                     }
                     */
@@ -411,20 +506,20 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 else
                 {
                     durationX = 0;
-                    lastUpdateX = 0;
+                    accXMotionStartedMs = 0;
 
                 }
 
                 if (((devYPrev * devY) > 0) /* && ( sqrt(devY * devY) > 0.5) */)
                 {
-                    durationY = currentTimeMs - lastUpdateY;
+                    durationY = currentTimeMs - accYMotionStartedMs;
                     /*
                     if ( sqrt(devY * devY) > 0.5) {
-                        durationY = currentTimeMs - lastUpdateY;
+                        durationY = currentTimeMs - accYMotionStartedMs;
                     }
                     else
                     {
-                        lastUpdateY = currentTimeMs;
+                        accYMotionStartedMs = currentTimeMs;
                         durationY = 0;
                     }
                     */
@@ -432,16 +527,16 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 else
                 {
                     durationY = 0;
-                    lastUpdateY = currentTimeMs;
+                    accYMotionStartedMs = currentTimeMs;
                 }
 
                 if (((devZPrev * devZ) > 0))
                 {
-                    durationZ = currentTimeMs - lastUpdateY;
+                    durationZ = currentTimeMs - accYMotionStartedMs;
                 }
                 else
                 {
-                    lastUpdateZ = 0;
+                    accZMotionStartedMs = 0;
                     durationZ = 0;
                 }
 
@@ -471,13 +566,13 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                         }
                     }
 
-                if (durationY > durationMax)
+                if (durationY > durationMaxY)
                 {
-                    durationMax = durationY;
+                    durationMaxY = durationY;
                 }
-                if (durationX > durationMax)
+                if (durationX > durationMaxX)
                 {
-                    durationMax = durationX;
+                    durationMaxX = durationX;
                 }
 
             }
@@ -486,25 +581,19 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
                 totalAccIntegrated = 0;
 
-                lastUpdateX = 0;
-                lastUpdateY = 0;
-                lastUpdateZ = 0;
+                accXMotionStartedMs = 0;
+                accYMotionStartedMs = 0;
+                accZMotionStartedMs = 0;
                 accSum = 0;
                 accCount = 0;
 
-                aXI = 0;
-                aYI = 0;
-                aZI = 0;
-
                 takeoffDetected = false;
-                isAcceleration = currentAcceleration;
+                //isAcceleration = currentAcceleration;
                 durationY = 0;
 
-
-
-                aXMPrev = aXM;
-                aZMPrev = aZM;
-                aYMPrev = aYM;
+                accXMeanPrev = accXMean;
+                accZMeanPrev = accZMean;
+                accYMeanPrev = accYMean;
 
                 devXPrev = 0;
                 devYPrev = 0;
@@ -518,19 +607,19 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
 
 
 
-            str = String.format("Total: %.4f, %.4f, %.4f\n", accTotal, accTotalAbs, totalMax);
+            str = String.format("Total: %.4f, %.4f, %.4f\n", accTotal, accTotalAbs, totalMaxAbs);
             scrollTextView.append(str);
 
 
-            str = String.format("Moving To: %d\n", movDirection);
-            scrollTextView.append(str);
+            //str = String.format("Moving To: %d\n", movDirection);
+            //scrollTextView.append(str);
 
 
             str = String.format("Total Max: %.4f, %.4f\n", totalAccIntegrated, integratedMax);
             scrollTextView.append(str);
 
 
-            str = String.format("Dur: %d , %d ms\n", durationY, durationMax);
+            str = String.format("Dur: %d , %d ms\n", durationY, durationMaxY);
             scrollTextView.append(str);
 
             str = String.format("TakeOff: %d\n", takeOffCounter);
@@ -539,21 +628,21 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
         if (isMagnetosensor && (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD))
         {
             float[] values = event.values;
-            mx = values[0];
-            my = values[1];
-            mz = values[2];
+            mX = values[0];
+            mY = values[1];
+            mZ = values[2];
 
-            magSquareRoot = (float) (sqrt(mx *mx + my * my + mz * mz));
+            magSquareRoot = (float) (sqrt(mX *mX + mX * mX + mZ * mZ));
 
         }
         if (isGiroScope && (event.sensor.getType() == Sensor.TYPE_GYROSCOPE))
         {
             float[] values = event.values;
-            gx = values[0];
-            gy = values[1];
-            gz = values[2];
+            gX = values[0];
+            gY = values[1];
+            gZ = values[2];
 
-            gyroSquareRoot = (float) (sqrt(gx * gx + gy * gy + gz * gz));
+            gyroSquareRoot = (float) (sqrt(gX * gX + gY * gY + gY * gZ));
         }
 
         if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED)
