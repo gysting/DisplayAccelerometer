@@ -298,8 +298,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
     }
 
     private void getAccelerometer(SensorEvent event) {
-       // boolean isMagnetometerCalibrated = false;
-       // boolean isGyroscopeCalibrated = false;
+       boolean isMagnetometerCalibrated = false;
+       boolean isGyroscopeCalibrated = false;
        // boolean currentAcceleration = false;
         long currentTimeMs = 0;
         // long freq= 0;
@@ -324,8 +324,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             y = values[1];
             z = values[2];
 
-            /* number of event */
-            accEventCounter++;
 
             if (accMsPrev == 0) {
                 accMsPrev = currentTimeMs;
@@ -344,6 +342,9 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 accMsPrev = currentTimeMs;
 
             }
+
+            /* number of event */
+            accEventCounter++;
 
 
             /*
@@ -437,8 +438,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 compensation = (accTotal * -1);
             }
 
-
-
             //graph.getViewport().setMinX(seriesAccX.getLowestValueX());
             //graph.getViewport().setMaxX(seriesAccX.getLowestValueX() + 4000);
             //accelSquareRoot2 = (ax * ax + ay * ay + az * az) / (SensorManager.GRAVITY_EARTH * SensorManager.GRAVITY_EARTH);
@@ -450,23 +449,7 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 totalMaxAbs = accTotalAbs;
             }
 
-            if (devX > 2)
-            {
-
-            }
-
-            if (devY > 2)
-            {
-
-            }
-
-            if(devZ > 2)
-            {
-                
-            }
-
-
-            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0))
+            if ((accTotalAbs > checkAcc) && ((accTotalPrev * accTotal) > 0) && (accEventCounter > accCalSample))
             {
 
                 if (accXMotionStartedMs == 0) {
@@ -479,7 +462,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                     accYMotionStartedMs = System.currentTimeMillis();
                     devYPrev = devY;
                     durationY = 0;
-
                 }
 
                 if (accZMotionStartedMs == 0) {
@@ -489,7 +471,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 }
 
                 if ((devXPrev * devX) > 0) {
-
                     durationX = currentTimeMs - accXMotionStartedMs;
                     /*
                     if (sqrt(devX * devX) > 0.5) {
@@ -501,13 +482,11 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                         durationX = 0;
                     }
                     */
-
                 }
                 else
                 {
                     durationX = 0;
                     accXMotionStartedMs = 0;
-
                 }
 
                 if (((devYPrev * devY) > 0) /* && ( sqrt(devY * devY) > 0.5) */)
@@ -578,7 +557,6 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
             }
             else
             {
-
                 totalAccIntegrated = 0;
 
                 accXMotionStartedMs = 0;
@@ -598,12 +576,8 @@ public class ScrollingActivity extends AppCompatActivity implements SensorEventL
                 devXPrev = 0;
                 devYPrev = 0;
                 devZPrev = 0;
-
+                accTotalPrev = accTotal;
             }
-
-
-            accTotalPrev = accTotal;
-
 
 
 
